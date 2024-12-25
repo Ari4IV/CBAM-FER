@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虛擬環境
+venv/
+env/
+ENV/
+.env
+.venv
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# 專案特定
+*.pth
+*.pt
+*.ckpt
+logs/
+runs/
+wandb/
+.cache/
+processed/
+datasets/
+DATASET/
+
+# 資料集
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.zip
+*.tar
+*.gz
+
+# 日誌檔案
+*.log
+*.csv
+*.json
+
+# 其他
+.DS_Store
+Thumbs.db 
