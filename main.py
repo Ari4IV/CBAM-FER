@@ -4,16 +4,26 @@ import numpy as np
 from models.resemotenet_enhanced import EnhancedResEmoteNet
 from utils.data_utils import get_data_transforms
 import argparse
+from PIL import Image, ImageDraw, ImageFont
 
 class EmotionDetector:
     """
     即時表情辨識器
     """
     def __init__(self, model_path, device='cuda'):
+        # 檢查 CUDA 是否可用
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"使用設備: {self.device}")
+        
         # 載入模型
-        self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         self.model = EnhancedResEmoteNet(num_classes=7).to(self.device)
-        self.model.load_state_dict(torch.load(model_path)['model_state_dict'])
+        
+        # 根據設備載入模型權重
+        checkpoint = torch.load(
+            model_path, 
+            map_location=self.device
+        )
+        self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.eval()
         
         # 表情標籤
@@ -34,6 +44,49 @@ class EmotionDetector:
         self.face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         )
+        
+        # 載入中文字體
+        try:
+            # 嘗試載入系統字體
+            font_paths = [
+                "/System/Library/Fonts/PingFang.ttc",  # macOS
+                "/System/Library/Fonts/STHeiti Light.ttc",  # macOS 備選
+                "C:/Windows/Fonts/mingliu.ttc",  # Windows
+                "C:/Windows/Fonts/msjh.ttc",  # Windows 備選
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",  # Linux
+            ]
+            
+            self.font = None
+            for path in font_paths:
+                try:
+                    self.font = ImageFont.truetype(path, 32)
+                    break
+                except:
+                    continue
+                    
+            if self.font is None:
+                raise Exception("找不到合適的中文字體")
+                
+        except Exception as e:
+            print(f"警告: 無法載入中文字體: {e}")
+            self.font = None
+
+    def draw_text_with_chinese(self, img, text, position, color=(0, 255, 0)):
+        if self.font is None:
+            # 如果沒有中文字體，退回使用 OpenCV 默認字體
+            cv2.putText(img, text, position, cv2.FONT_HERSHEY_SIMPLEX, 
+                       0.9, color, 2, cv2.LINE_AA)
+            return img
+            
+        # 轉換成 PIL 格式
+        img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(img_pil)
+        
+        # 繪製文字
+        draw.text(position, text, font=self.font, fill=color[::-1])  # RGB -> BGR
+        
+        # 轉回 OpenCV 格式
+        return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
     def detect_emotion(self, frame):
         """
@@ -100,20 +153,15 @@ def main():
             # 繪製邊界框
             cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
             
-            # 顯示表情和信心度
+            # 使用中文字體顯示表情和信心度
             text = f"{emotion} ({confidence:.2f})"
-            cv2.putText(frame, text, (x, y-10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.9,
-                       (0, 255, 0), 2)
+            frame = detector.draw_text_with_chinese(frame, text, (x, y-40))
         
-        # 顯示影像
         cv2.imshow('CBAM-FER 即時表情辨識', frame)
         
-        # 按 'q' 結束程式
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
     
-    # 釋放資源
     cap.release()
     cv2.destroyAllWindows()
 
