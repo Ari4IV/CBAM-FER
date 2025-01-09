@@ -8,6 +8,7 @@ from models.resemotenet_enhanced import EnhancedResEmoteNet
 from utils.data_utils import RAFDBDataset, get_data_transforms
 from utils.train_utils import train_epoch, validate
 import shutil
+from utils.evaluation_utils import TrainingMonitor
 
 def download_and_prepare_dataset():
     """
@@ -139,6 +140,11 @@ def train(args):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(args.seed)
     
+    # 初始化訓練監控器
+    monitor = TrainingMonitor(
+        classes=['生氣', '厭惡', '恐懼', '開心', '傷心', '驚訝', '中性']
+    )
+    
     try:
         # 下載並準備資料集
         if not args.data_dir:
@@ -218,6 +224,37 @@ def train(args):
             # 更新學習率
             scheduler.step()
             
+            # 收集預測結果和真實標籤
+            all_predictions = []
+            all_targets = []
+            model.eval()
+            with torch.no_grad():
+                for inputs, targets in val_loader:
+                    inputs = inputs.to(device)
+                    outputs = model(inputs)
+                    _, predictions = torch.max(outputs, 1)
+                    all_predictions.extend(predictions.cpu().numpy())
+                    all_targets.extend(targets.numpy())
+            
+            # 更新監控器
+            monitor.update_stats(
+                train_loss=train_loss,
+                train_acc=train_acc,
+                val_loss=val_loss,
+                val_acc=val_acc,
+                lr=optimizer.param_groups[0]['lr'],
+                epoch_predictions=all_predictions,
+                epoch_targets=all_targets
+            )
+            
+            # 生成視覺化和報告
+            monitor.plot_training_curves(epoch)
+            monitor.plot_confusion_matrix(epoch)
+            monitor.generate_classification_report(epoch)
+            
+            # 儲存統計資料
+            monitor.save_training_stats()
+            
             # 儲存最佳模型
             if val_acc > best_acc:
                 best_acc = val_acc
@@ -242,12 +279,12 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type=str, default='',
                         help='RAF-DB 資料集路徑 (若未指定則自動下載)')
     parser.add_argument('--num_workers', type=int, default=4,
-                        help='資料載入��行緒數')
+                        help='資料載入的行緒數')
     
     # 訓練相關參數
     parser.add_argument('--batch_size', type=int, default=32,
                         help='批次大小')
-    parser.add_argument('--epochs', type=int, default=100,
+    parser.add_argument('--epochs', type=int, default=200,
                         help='訓練週期數')
     parser.add_argument('--lr', type=float, default=0.001,
                         help='起始學習率')
