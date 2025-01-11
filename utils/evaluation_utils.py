@@ -1,167 +1,135 @@
 import os
 import json
-import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, classification_report
-import torch
 from datetime import datetime
-import matplotlib.font_manager as fm
-import platform
 
 class TrainingMonitor:
-    def __init__(self, output_dir=None, classes=None):
+    def __init__(self, target_names, dataset_name, log_dir='training_logs'):
         """
         初始化訓練監控器
         
         Args:
-            output_dir: 輸出目錄路徑，如果為 None 則自動創建
-            classes: 類別標籤列表
+            target_names (list): 目標類別的名稱列表
+            dataset_name (str): 資料集名稱
+            log_dir (str): 日誌檔案的儲存目錄
         """
-        if output_dir is None:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            output_dir = os.path.join('experiments', f'run_{timestamp}')
+        self.target_names = target_names
+        self.dataset_name = dataset_name
         
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+        # 建立包含日期時間的日誌目錄
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.log_dir = os.path.join(log_dir, f'{dataset_name}_{timestamp}')
+        os.makedirs(self.log_dir, exist_ok=True)
         
-        self.classes = classes or [str(i) for i in range(7)]  # 預設表情類別 0-6
+        # 初始化統計資料
         self.stats = {
             'train_loss': [],
             'train_acc': [],
             'val_loss': [],
             'val_acc': [],
             'lr': [],
-            'epoch_predictions': [],  # 儲存每個 epoch 的預測結果
-            'epoch_targets': []       # 儲存每個 epoch 的真實標籤
+            'epoch_predictions': [],
+            'epoch_targets': []
         }
-        
-        # 設定中文字型
-        self._setup_chinese_font()
     
-    def _setup_chinese_font(self):
-        """設定中文字型"""
-        system = platform.system()
-        
-        if system == 'Windows':
-            plt.rcParams['font.family'] = ['Microsoft JhengHei']
-        elif system == 'Darwin':  # macOS
-            plt.rcParams['font.family'] = ['Arial Unicode MS']
-        elif system == 'Linux':
-            plt.rcParams['font.family'] = ['Noto Sans CJK TC']
-        
-        # 確保 matplotlib 使用 Unicode 支援
-        plt.rcParams['axes.unicode_minus'] = False
-    
-    def update_stats(self, train_loss, train_acc, val_loss, val_acc, lr, 
-                    epoch_predictions=None, epoch_targets=None):
+    def update_stats(self, train_loss, train_acc, val_loss, val_acc, lr, epoch_predictions, epoch_targets):
         """更新訓練統計資料"""
         self.stats['train_loss'].append(train_loss)
         self.stats['train_acc'].append(train_acc)
         self.stats['val_loss'].append(val_loss)
         self.stats['val_acc'].append(val_acc)
         self.stats['lr'].append(lr)
-        
-        if epoch_predictions is not None and epoch_targets is not None:
-            self.stats['epoch_predictions'].append(epoch_predictions)
-            self.stats['epoch_targets'].append(epoch_targets)
+        self.stats['epoch_predictions'] = epoch_predictions
+        self.stats['epoch_targets'] = epoch_targets
     
     def plot_training_curves(self, epoch):
         """繪製訓練曲線"""
-        plt.figure(figsize=(15, 5))
+        plt.figure(figsize=(12, 4))
         
         # 損失曲線
-        plt.subplot(1, 3, 1)
-        plt.plot(self.stats['train_loss'], label='訓練損失')
-        plt.plot(self.stats['val_loss'], label='驗證損失')
-        plt.xlabel('週期')
-        plt.ylabel('損失')
+        plt.subplot(1, 2, 1)
+        plt.plot(self.stats['train_loss'], label='Train Loss')
+        plt.plot(self.stats['val_loss'], label='Val Loss')
+        plt.title('Training and Validation Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
         plt.legend()
-        plt.title('訓練與驗證損失')
         
         # 準確率曲線
-        plt.subplot(1, 3, 2)
-        plt.plot(self.stats['train_acc'], label='訓練準確率')
-        plt.plot(self.stats['val_acc'], label='驗證準確率')
-        plt.xlabel('週期')
-        plt.ylabel('準確率')
+        plt.subplot(1, 2, 2)
+        plt.plot(self.stats['train_acc'], label='Train Acc')
+        plt.plot(self.stats['val_acc'], label='Val Acc')
+        plt.title('Training and Validation Accuracy')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
         plt.legend()
-        plt.title('訓練與驗證準確率')
-        
-        # 學習率曲線
-        plt.subplot(1, 3, 3)
-        plt.plot(self.stats['lr'])
-        plt.xlabel('週期')
-        plt.ylabel('學習率')
-        plt.title('學習率變化')
         
         plt.tight_layout()
-        plt.savefig(os.path.join(self.output_dir, f'training_curves_epoch_{epoch}.png'))
+        plt.savefig(os.path.join(self.log_dir, f'training_curves_epoch_{epoch}.png'))
         plt.close()
     
     def plot_confusion_matrix(self, epoch):
         """繪製混淆矩陣"""
-        if not self.stats['epoch_predictions'] or not self.stats['epoch_targets']:
-            return
+        # 獲取實際出現的類別
+        unique_labels = sorted(set(self.stats['epoch_targets']))
+        actual_target_names = [self.target_names[i] for i in unique_labels]
         
-        # 獲取最新一輪的預測和標籤
-        y_pred = self.stats['epoch_predictions'][-1]
-        y_true = self.stats['epoch_targets'][-1]
+        cm = confusion_matrix(
+            self.stats['epoch_targets'], 
+            self.stats['epoch_predictions'],
+            labels=unique_labels
+        )
         
-        # 計算混淆矩陣
-        cm = confusion_matrix(y_true, y_pred)
-        
-        # 繪製混淆矩陣
         plt.figure(figsize=(10, 8))
         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                    xticklabels=self.classes,
-                    yticklabels=self.classes)
-        plt.xlabel('預測類別')
-        plt.ylabel('真實類別')
-        plt.title(f'混淆矩陣 (Epoch {epoch})')
-        
+                   xticklabels=actual_target_names,
+                   yticklabels=actual_target_names)
+        plt.title('Confusion Matrix')
+        plt.xlabel('Predicted')
+        plt.ylabel('True')
         plt.tight_layout()
-        plt.savefig(os.path.join(self.output_dir, f'confusion_matrix_epoch_{epoch}.png'))
+        plt.savefig(os.path.join(self.log_dir, f'confusion_matrix_epoch_{epoch}.png'))
         plt.close()
     
     def generate_classification_report(self, epoch):
         """生成分類報告"""
-        if not self.stats['epoch_predictions'] or not self.stats['epoch_targets']:
-            return
+        # 獲取實際出現的類別
+        unique_labels = sorted(set(self.stats['epoch_targets']))
+        actual_target_names = [self.target_names[i] for i in unique_labels]
         
-        y_pred = self.stats['epoch_predictions'][-1]
-        y_true = self.stats['epoch_targets'][-1]
-        
-        # 修改：設定 zero_division=1 來避免警告
         report = classification_report(
-            y_true, 
-            y_pred,
-            target_names=self.classes,
-            output_dict=True,
-            zero_division=1  # 當沒有預測樣本時，設定精確率為 1
+            self.stats['epoch_targets'],
+            self.stats['epoch_predictions'],
+            labels=unique_labels,  # 指定實際的標籤
+            target_names=actual_target_names,  # 使用對應的名稱
+            digits=4,
+            zero_division=0  # 明確指定除零時的行為
         )
         
-        # 將報告轉換為 DataFrame 並保存
-        df = pd.DataFrame(report).transpose()
-        df.to_csv(os.path.join(self.output_dir, f'classification_report_epoch_{epoch}.csv'))
+        # 更新報告格式，加入資料集資訊
+        with open(os.path.join(self.log_dir, f'classification_report_epoch_{epoch}.txt'), 'w') as f:
+            f.write(f"資料集：{self.dataset_name}\n")
+            f.write(f"日期時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"分類報告 - 第 {epoch} 個訓練週期\n")
+            f.write("="*50 + "\n")
+            f.write("註：如果某些類別沒有預測樣本，精確度將被設為 0\n")
+            f.write("="*50 + "\n\n")
+            f.write(report)
     
     def save_training_stats(self):
-        """保存訓練統計資料"""
-        # 保存基本統計資料
-        basic_stats = {
+        """儲存訓練統計資料"""
+        stats_file = os.path.join(self.log_dir, 'training_stats.json')
+        save_stats = {
+            'dataset_name': self.dataset_name,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'train_loss': self.stats['train_loss'],
             'train_acc': self.stats['train_acc'],
             'val_loss': self.stats['val_loss'],
             'val_acc': self.stats['val_acc'],
             'lr': self.stats['lr']
         }
-        df = pd.DataFrame(basic_stats)
-        df.to_csv(os.path.join(self.output_dir, 'training_stats.csv'), index=False)
-    
-    def save_training_config(self, args):
-        """保存訓練配置"""
-        config = vars(args)
-        with open(os.path.join(self.output_dir, 'training_config.json'), 'w', 
-                 encoding='utf-8') as f:
-            json.dump(config, f, ensure_ascii=False, indent=4) 
+        
+        with open(stats_file, 'w') as f:
+            json.dump(save_stats, f) 

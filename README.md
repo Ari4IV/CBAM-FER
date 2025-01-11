@@ -39,21 +39,67 @@ pip install -r requirements.txt
 ## 使用方式
 
 ### 訓練模型
+
+#### 基本用法
 ```bash
 # 自動下載資料集並開始訓練
-python train.py
-
-# 或指定本地資料集
-python train.py --data_dir /path/to/RAF-DB
+python train.py --dataset raf-db
+python train.py --dataset fer2013
 ```
 
-### 訓練參數說明
-- `--data_dir`: RAF-DB 資料集路徑（可選，若未指定則自動下載）
-- `--batch_size`: 批次大小（預設：32）
-- `--epochs`: 訓練週期數（預設：100）
-- `--lr`: 學習率（預設：0.001）
-- `--num_workers`: 資料載入執行緒數（預設：4）
-- `--seed`: 隨機種子（預設：42）
+#### 建議的訓練參數
+
+##### RAF-DB 資料集最佳參數
+```bash
+python train.py \
+    --dataset raf-db \
+    --batch_size 64 \
+    --epochs 200 \
+    --lr 1e-4 \
+    --weight_decay 0.1 \
+    --patience 15
+```
+
+##### FER2013 資料集最佳參數
+```bash
+python train.py \
+    --dataset fer2013 \
+    --batch_size 128 \
+    --epochs 150 \
+    --lr 1e-4 \
+    --weight_decay 0.1 \
+    --patience 15
+```
+
+#### 可用的訓練參數
+| 參數 | 說明 | 預設值 |
+|------|------|--------|
+| `--dataset` | 選擇資料集 (`raf-db` 或 `fer2013`) | `raf-db` |
+| `--data_dir` | 資料集路徑 (若未指定則自動下載) | - |
+| `--batch_size` | 批次大小 | 32 |
+| `--epochs` | 訓練週期數 | 200 |
+| `--lr` | 起始學習率 | 3e-4 |
+| `--weight_decay` | 權重衰減係數 | 0.05 |
+| `--patience` | 早停耐心值 | 15 |
+| `--num_workers` | 資料載入的執行緒數 | 4 |
+| `--seed` | 隨機種子 | 42 |
+
+#### 訓練技巧
+1. **批次大小**：
+   - 較大的批次大小（64-128）通常能提供更穩定的訓練
+   - 如果顯存不足，可以降低批次大小
+
+2. **學習率**：
+   - 建議從較小的學習率開始（1e-4）
+   - 如果訓練不穩定，可以進一步降低到 5e-5
+
+3. **權重衰減**：
+   - 較大的權重衰減（0.1）有助於防止過擬合
+   - 如果模型欠擬合，可以降低到 0.01
+
+4. **早停機制**：
+   - 預設的耐心值為 15 個週期
+   - 可以根據訓練曲線調整此值
 
 ### 即時表情辨識
 ```bash

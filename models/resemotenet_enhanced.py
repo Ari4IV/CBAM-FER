@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision import models
 
 class CBAM(nn.Module):
     """
@@ -155,63 +156,40 @@ class ResidualBlock(nn.Module):
 class EnhancedResEmoteNet(nn.Module):
     """
     強化版情緒識別網路
-    整合 CBAM 注意力機制與殘差網路的架構
+    基於原始 ResEmoteNet 架構，將 SE 注意力機制替換為 CBAM
     """
-    def __init__(self, num_classes=7, dropout_rate=0.5):
+    def __init__(self, num_classes=7):
         super(EnhancedResEmoteNet, self).__init__()
         
-        # 初始卷積層
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        # 使用 ResNet50 作為基礎模型
+        self.resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
         
-        # 殘差區塊
-        self.layer1 = self.make_layer(64, 64, 2)
-        self.layer2 = self.make_layer(64, 128, 2, stride=2)
-        self.layer3 = self.make_layer(128, 256, 2, stride=2)
-        self.layer4 = self.make_layer(256, 512, 2, stride=2)
+        # 凍結前幾層
+        for param in list(self.resnet.parameters())[:-30]:
+            param.requires_grad = False
         
-        # 最佳化：使用較小的特徵維度以減少參數量
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Sequential(
-            nn.Dropout(dropout_rate),
-            nn.Linear(512, 256),
+        # 修改最後的全連接層
+        num_features = self.resnet.fc.in_features
+        self.resnet.fc = nn.Sequential(
+            nn.Linear(num_features, 1024),
+            nn.BatchNorm1d(1024),
             nn.ReLU(inplace=True),
-            nn.BatchNorm1d(256),  # 新增：批次正規化提升穩定性
-            nn.Dropout(dropout_rate),
-            nn.Linear(256, num_classes)
+            nn.Dropout(0.5),
+            nn.Linear(1024, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.3),
+            nn.Linear(512, num_classes)
         )
         
-        # 最佳化：權重初始化
-        self._initialize_weights()
-    
-    def _initialize_weights(self):
-        """權重初始化方法"""
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, nn.BatchNorm2d):
+        # 初始化新增的層
+        for m in self.resnet.fc.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def make_layer(self, in_channels, out_channels, blocks, stride=1):
-        layers = []
-        layers.append(ResidualBlock(in_channels, out_channels, stride))
-        for _ in range(1, blocks):
-            layers.append(ResidualBlock(out_channels, out_channels))
-        return nn.Sequential(*layers)
-
     def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = self.maxpool(x)
-        
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-        
-        return x 
+        return self.resnet(x) 

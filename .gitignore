@@ -47,6 +47,7 @@ wandb/
 processed/
 datasets/
 DATASET/
+training_logs/
 
 # 資料集
 *.jpg

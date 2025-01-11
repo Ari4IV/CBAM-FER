@@ -1,6 +1,7 @@
 import torch
 from tqdm import tqdm
 import numpy as np
+import torch.nn as nn
 
 class AverageMeter:
     def __init__(self):
@@ -17,6 +18,21 @@ class AverageMeter:
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+class LabelSmoothingLoss(nn.Module):
+    def __init__(self, classes, smoothing=0.1):
+        super(LabelSmoothingLoss, self).__init__()
+        self.confidence = 1.0 - smoothing
+        self.smoothing = smoothing
+        self.classes = classes
+
+    def forward(self, pred, target):
+        pred = pred.log_softmax(dim=-1)
+        with torch.no_grad():
+            true_dist = torch.zeros_like(pred)
+            true_dist.fill_(self.smoothing / (self.classes - 1))
+            true_dist.scatter_(1, target.unsqueeze(1), self.confidence)
+        return torch.mean(torch.sum(-true_dist * pred, dim=-1))
 
 def train_epoch(model, dataloader, criterion, optimizer, device):
     model.train()
